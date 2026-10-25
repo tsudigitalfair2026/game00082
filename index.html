@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>ペンギンつみつみタワーDX</title>
+<style>
+*{
+margin:0;
+padding:0;
+box-sizing:border-box;
+-webkit-tap-highlight-color:transparent;
+}
+
+html,body{
+width:100%;
+height:100%;
+overflow:hidden;
+font-family:sans-serif;
+background:linear-gradient(#87ceeb,#e8f8ff);
+touch-action:none;
+user-select:none;
+}
+
+.screen{
+display:none;
+width:100%;
+height:100vh;
+padding:12px;
+flex-direction:column;
+justify-content:center;
+align-items:center;
+text-align:center;
+}
+
+.active{
+display:flex;
+}
+
+h1{
+font-size:2rem;
+margin-bottom:12px;
+}
+
+p{
+line-height:1.6;
+margin-bottom:20px;
+}
+
+button{
+font-size:1.2rem;
+padding:14px 30px;
+border:none;
+border-radius:14px;
+background:#2196f3;
+color:white;
+min-width:200px;
+cursor:pointer;
+}
+
+#hud{
+width:min(95vw,420px);
+display:flex;
+justify-content:space-between;
+font-size:1.2rem;
+font-weight:bold;
+margin-bottom:8px;
+}
+
+#gameArea{
+position:relative;
+width:min(95vw,420px);
+height:72vh;
+background:linear-gradient(#dff6ff,#ffffff);
+border:3px solid #333;
+border-radius:12px;
+overflow:hidden;
+}
+
+#ground{
+position:absolute;
+left:0;
+bottom:0;
+width:100%;
+height:18px;
+background:#4caf50;
+}
+
+.block{
+position:absolute;
+width:72px;
+height:42px;
+display:flex;
+justify-content:center;
+align-items:center;
+font-size:30px;
+border-radius:10px;
+}
+
+#moving{
+background:#ffe082;
+border:2px solid #444;
+top:20px;
+}
+
+#giantPenguin{
+position:absolute;
+left:50%;
+transform:translateX(-50%);
+font-size:90px;
+top:-150px;
+display:none;
+pointer-events:none;
+}
+
+#message{
+height:32px;
+font-size:18px;
+font-weight:bold;
+color:#d84315;
+margin-top:8px;
+}
+
+.result{
+font-size:28px;
+margin:10px;
+}
+
+.iceEffect{
+animation:wobble .18s infinite alternate;
+}
+
+@keyframes wobble{
+from{
+transform:translateX(-4px);
+}
+to{
+transform:translateX(4px);
+}
+}
+</style>
+</head>
+<body>
+
+<div id="startScreen" class="screen active">
+<h1>🐧 ペンギンつみつみタワーDX</h1>
+
+<p>
+左右に動くペンギンをタップして積み上げよう！<br>
+30秒以内に天井まで届けばゲームクリア！<br>
+巨大ペンギンでボーナス得点！<br>
+氷の足場ではペンギンがぐらぐらするぞ！
+</p>
+
+<button id="startBtn">スタート</button>
+</div>
+
+<div id="gameScreen" class="screen">
+
+<div id="hud">
+<div>🏆 <span id="score">0</span></div>
+<div>⏰ <span id="time">30</span></div>
+</div>
+
+<div id="gameArea">
+<div id="moving" class="block">🐧</div>
+<div id="giantPenguin">🐧</div>
+<div id="ground"></div>
+</div>
+
+<div id="message"></div>
+
+</div>
+
+<div id="resultScreen" class="screen">
+
+<h1>結果発表</h1>
+
+<div class="result">
+スコア：<span id="finalScore">0</span>
+</div>
+
+<div class="result">
+ランク：<span id="rank">C</span>
+</div>
+
+<div class="result" id="resultText"></div>
+
+<button id="retryBtn">もう一度遊ぶ</button>
+
+</div>
+
+<script>
+const startScreen=document.getElementById("startScreen");
+const gameScreen=document.getElementById("gameScreen");
+const resultScreen=document.getElementById("resultScreen");
+
+const gameArea=document.getElementById("gameArea");
+const moving=document.getElementById("moving");
+const giant=document.getElementById("giantPenguin");
+
+const scoreEl=document.getElementById("score");
+const timeEl=document.getElementById("time");
+const finalScoreEl=document.getElementById("finalScore");
+const rankEl=document.getElementById("rank");
+const resultText=document.getElementById("resultText");
+const message=document.getElementById("message");
+
+let score=0;
+let time=30;
+
+let timer=null;
+let animation=null;
+
+let movingX=0;
+let direction=1;
+
+let stack=[];
+let dropping=false;
+let gameEnded=false;
+
+let giantActive=false;
+let giantTimer=null;
+
+let iceMode=false;
+let iceTimer=null;
+
+function startGame(){
+
+clearInterval(timer);
+cancelAnimationFrame(animation);
+clearTimeout(giantTimer);
+clearTimeout(iceTimer);
+
+score=0;
+time=30;
+
+stack=[];
+dropping=false;
+gameEnded=false;
+
+giantActive=false;
+iceMode=false;
+
+document.querySelectorAll(".placed").forEach(v=>v.remove());
+
+scoreEl.textContent="0";
+timeEl.textContent="30";
+
+message.textContent="";
+
+giant.style.display="none";
+
+startScreen.classList.remove("active");
+resultScreen.classList.remove("active");
+gameScreen.classList.add("active");
+
+resetMoving();
+
+timer=setInterval(()=>{
+time--;
+timeEl.textContent=time;
+
+if(time<=0){
+endGame(false);
+}
+},1000);
+
+scheduleGiant();
+scheduleIce();
+animate();
+}
+
+function scheduleGiant(){
+
+giantTimer=setTimeout(()=>{
+
+if(gameEnded) return;
+
+showGiantPenguin();
+
+scheduleGiant();
+
+},4000+Math.random()*3000);
+}
+
+function showGiantPenguin(){
+
+if(gameEnded) return;
+if(giantActive) return;
+
+giantActive=true;
+giant.style.display="block";
+
+let y=-150;
+
+function fall(){
+
+if(!giantActive) return;
+
+y+=5;
+giant.style.top=y+"px";
+
+if(y<120){
+requestAnimationFrame(fall);
+}else{
+
+message.textContent="🐧 巨大ペンギン！タップで50点！";
+
+const hit=()=>{
+
+if(!giantActive) return;
+
+score+=50;
+scoreEl.textContent=score;
+
+message.textContent="🎉 +50点獲得！";
+
+giant.style.display="none";
+giantActive=false;
+
+gameArea.removeEventListener("pointerdown",hit,true);
+};
+
+gameArea.addEventListener("pointerdown",hit,true);
+
+setTimeout(()=>{
+
+gameArea.removeEventListener("pointerdown",hit,true);
+
+if(giantActive){
+giantActive=false;
+giant.style.display="none";
+
+if(!iceMode){
+message.textContent="";
+}
+}
+
+},1800);
+}
+}
+
+fall();
+}
+
+function scheduleIce(){
+
+iceTimer=setTimeout(()=>{
+
+if(gameEnded) return;
+
+startIceMode();
+
+scheduleIce();
+
+},5000+Math.random()*5000);
+}
+
+function startIceMode(){
+
+if(gameEnded) return;
+
+iceMode=true;
+
+message.textContent="🧊 氷の足場！ぐらぐら中！";
+
+document.querySelectorAll(".placed").forEach(block=>{
+block.classList.add("iceEffect");
+});
+
+setTimeout(()=>{
+
+iceMode=false;
+
+document.querySelectorAll(".placed").forEach(block=>{
+block.classList.remove("iceEffect");
+});
+
+message.textContent="";
+
+},3000);
+}
+
+function animate(){
+
+cancelAnimationFrame(animation);
+
+function loop(){
+
+if(gameEnded) return;
+
+if(!dropping){
+
+const maxX=gameArea.clientWidth-moving.offsetWidth;
+
+movingX+=3*direction;
+
+if(movingX<=0){
+movingX=0;
+direction=1;
+}
+
+if(movingX>=maxX){
+movingX=maxX;
+direction=-1;
+}
+
+moving.style.left=movingX+"px";
+}
+
+animation=requestAnimationFrame(loop);
+}
+
+loop();
+}
+
+function resetMoving(){
+
+movingX=0;
+moving.style.left="0px";
+moving.style.top="20px";
+}
+
+function dropPenguin(){
+
+if(dropping) return;
+if(gameEnded) return;
+if(time<=0) return;
+
+dropping=true;
+
+const block=document.createElement("div");
+
+block.className="block placed";
+block.textContent="🐧";
+block.style.background="#fff";
+block.style.border="2px solid #444";
+
+const x=parseFloat(moving.style.left)||0;
+
+let y;
+
+if(stack.length===0){
+
+y=gameArea.clientHeight-60;
+
+score+=10;
+
+}else{
+
+const top=stack[stack.length-1];
+
+let overlap=Math.abs(x-top.x);
+
+if(iceMode){
+overlap+=12;
+}
+
+y=top.y-42;
+
+if(overlap<15){
+score+=25;
+}
+else if(overlap<35){
+score+=15;
+}
+else{
+score+=5;
+}
+}
+
+block.style.left=x+"px";
+block.style.top=y+"px";
+
+gameArea.appendChild(block);
+
+stack.push({
+x:x,
+y:y
+});
+
+scoreEl.textContent=score;
+
+if(y<=20){
+
+score+=100;
+scoreEl.textContent=score;
+
+endGame(true);
+return;
+}
+
+setTimeout(()=>{
+dropping=false;
+resetMoving();
+},100);
+}
+
+function endGame(clear){
+
+if(gameEnded) return;
+
+gameEnded=true;
+
+clearInterval(timer);
+clearTimeout(giantTimer);
+clearTimeout(iceTimer);
+cancelAnimationFrame(animation);
+
+gameScreen.classList.remove("active");
+resultScreen.classList.add("active");
+
+finalScoreEl.textContent=score;
+
+let rank="C";
+
+if(score>=500){
+rank="S";
+}
+else if(score>=300){
+rank="A";
+}
+else if(score>=180){
+rank="B";
+}
+
+rankEl.textContent=rank;
+
+if(clear){
+resultText.textContent="🎉 タワー完成！ゲームクリア！";
+}else{
+resultText.textContent="⏰ 時間切れ！";
+}
+}
+
+document.getElementById("startBtn").addEventListener("click",startGame);
+document.getElementById("retryBtn").addEventListener("click",startGame);
+
+gameArea.addEventListener("pointerdown",dropPenguin);
+</script>
+
+</body>
+</html>
